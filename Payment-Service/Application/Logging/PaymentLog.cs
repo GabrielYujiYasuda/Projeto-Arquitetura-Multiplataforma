@@ -17,8 +17,4 @@ internal static partial class PaymentLog
     [LoggerMessage(EventId = 4003, EventName = "payment.not_found", Level = LogLevel.Warning,
         Message = "Pagamento {PaymentId} não encontrado.")]
     public static partial void PaymentNotFound(this ILogger logger, Guid paymentId);
-
-    [LoggerMessage(EventId = 4004, EventName = "payment.event_prepared", Level = LogLevel.Debug,
-        Message = "Evento de pagamento preparado para publicação. PaymentId: {PaymentId}, AppointmentId: {AppointmentId}, Status: {Status}")]
-    public static partial void PaymentEventPrepared(this ILogger logger, Guid paymentId, Guid appointmentId, PaymentStatus status);
 }

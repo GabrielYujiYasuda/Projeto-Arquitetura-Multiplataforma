@@ -67,7 +67,6 @@ No Kibana: `labels.correlation_id : "<id>"` (busca salva **Odonto | Trace por co
 | Payment | `payment.created` | Information | Pagamento criado. |
 | Payment | `payment.status_changed` | Information | Status alterado. |
 | Payment | `payment.not_found` | Warning | Pagamento inexistente. |
-| Payment | `payment.event_prepared` | Debug | Evento preparado para publicação. |
 | BFF | `auth.denied` | Warning | 401/403 (`error.code` traz o motivo). |
 | BFF | `http.rate_limited` | Warning | 429 (inclui `client.ip`). |
 | BFF | `downstream.timeout` | Warning | Timeout ao chamar um serviço (`destination.address`, `event.duration`). |

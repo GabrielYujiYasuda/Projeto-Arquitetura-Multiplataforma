@@ -44,8 +44,10 @@ Isso sobe três containers:
 2. Banco do Dentist-Service: `docker compose up -d` em `Dentist-Service/Dentist-service`
 3. Migrations: `dotnet ef database update` em `Dentist-Service/Dentist-service`
 4. Dentist-Service: `dotnet run` em `Dentist-Service/Dentist-service`
+5. Banco do Payment-Service: `docker compose up -d` em `Payment-Service`
+6. Payment-Service: `dotnet run` em `Payment-Service` (aplica as migrations ao subir)
 
-O Dentist-Service sobe mesmo sem o Kafka. Os eventos ficam guardados no outbox e são publicados quando o broker voltar.
+Os dois serviços sobem mesmo sem o Kafka. Os eventos ficam guardados no outbox e são publicados quando o broker voltar.
 
 ---
 
@@ -54,12 +56,22 @@ O Dentist-Service sobe mesmo sem o Kafka. Os eventos ficam guardados no outbox e
 | Tópico             | Produtor                                   | Consumidores                                    | Eventos                                                                                        |
 |--------------------|--------------------------------------------|-------------------------------------------------|------------------------------------------------------------------------------------------------|
 | `appointments`     | Dentist-Service (interino, até existir o Scheduled-Service) | Payment-service, Patient-Service (planejados) | `AppointmentRequested`, `AppointmentConfirmed`, `AppointmentRejected`, `AppointmentCancelled` |
-| `payments`         | Payment-service (planejado)                | Dentist-Service                                 | `PaymentApproved`, `PaymentFailed`                                                             |
+| `payments`         | Payment-Service                            | Dentist-Service                                 | `PaymentApproved`, `PaymentFailed`                                                             |
 | `health-insurance` | healthInsurance-service (planejado)        | Dentist-Service                                 | `InsuranceAuthorized`, `InsuranceDenied`                                                       |
 
 Cada tópico tem 3 partições e um tópico de falhas `<tópico>.dlq` (`appointments.dlq`, `payments.dlq`, `health-insurance.dlq`).
 
 O diagrama C4 prevê o Scheduled-Service como consumidor de pagamentos e planos. Enquanto o agendamento estiver no Dentist-Service, é ele quem assina esses tópicos.
+
+O Payment-Service publica quando o status de um pagamento muda (`PATCH /api/payments/{id}/status`):
+
+| Novo status                          | Evento            |
+|--------------------------------------|-------------------|
+| `Paid`                               | `PaymentApproved` |
+| `Failed`                             | `PaymentFailed`, com o `reason` enviado no PATCH (ou um motivo padrão) |
+| `Pending`, `Processing`, `Cancelled` | nenhum            |
+
+Repetir o mesmo status não gera um novo evento.
 
 ---
 
@@ -212,7 +224,7 @@ As mensagens na DLQ mantêm o valor e a chave originais e ganham os headers `dlq
 
 ## Serviços que não são .NET
 
-Payment-service e healthInsurance-service ainda não têm stack definida. Para outra linguagem:
+O healthInsurance-service ainda não tem stack definida. Para outra linguagem:
 
 - siga o envelope e os schemas de [`docs/asyncapi.yml`](docs/asyncapi.yml);
 - use o `appointmentId` como chave da mensagem;

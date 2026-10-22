@@ -35,6 +35,17 @@ Content-Type: application/json
 
 ###
 
+### Recusar pagamento (publica PaymentFailed com o motivo)
+PATCH {{PaymentService_HostAddress}}/api/payments/{{paymentId}}/status
+Content-Type: application/json
+
+{
+  "status": "Failed",
+  "reason": "Cartão recusado pela operadora"
+}
+
+###
+
 ### Consultar pagamento inexistente
 GET {{PaymentService_HostAddress}}/api/payments/00000000-0000-0000-0000-000000000000
 Accept: application/json

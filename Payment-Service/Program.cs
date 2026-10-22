@@ -1,4 +1,6 @@
 using System.Text.Json.Serialization;
+using Messaging;
+using Messaging.Telemetry;
 using Microsoft.EntityFrameworkCore;
 using Observability;
 using OpenTelemetry.Exporter;
@@ -18,8 +20,12 @@ builder.AddOdontoLogging();
 builder.Services.AddDbContext<PaymentDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+// Eventos de pagamento: outbox no PaymentDbContext, publicado no tópico "payments".
+builder.Services.AddKafkaMessaging(builder.Configuration)
+    .AddOutbox<PaymentDbContext>();
+
 builder.Services.AddScoped<IPaymentRepository, PostgresPaymentRepository>();
-builder.Services.AddSingleton<IPaymentEventPublisher, LoggingPaymentEventPublisher>();
+builder.Services.AddScoped<IPaymentEventPublisher, OutboxPaymentEventPublisher>();
 builder.Services.AddScoped<IPaymentService, PaymentService.Application.Services.PaymentService>();
 builder.Services.AddControllers(options =>
     {
@@ -42,6 +48,7 @@ builder.Services.AddOpenTelemetry()
     .ConfigureResource(resource => resource.AddService("payment-service"))
     .WithMetrics(metrics => metrics
         .AddMeter(PaymentMetrics.MeterName)
+        .AddMeter(MessagingMetrics.MeterName)
         .AddAspNetCoreInstrumentation()
         .AddHttpClientInstrumentation()
         .AddRuntimeInstrumentation()

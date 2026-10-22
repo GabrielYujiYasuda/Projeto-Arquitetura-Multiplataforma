@@ -53,8 +53,9 @@ public sealed class PaymentService(
 
         var now = DateTimeOffset.UtcNow;
         var payment = new Payment(Guid.NewGuid(), request.AppointmentId, request.Amount, now);
-        await repository.AddAsync(payment, cancellationToken);
+        // O evento vai para o outbox antes de salvar, para ser gravado na mesma transação do pagamento.
         await eventPublisher.PublishAsync(payment, cancellationToken);
+        await repository.AddAsync(payment, cancellationToken);
         metrics.CreationCreated(payment.Amount);
         metrics.RecordAmount(payment.Amount);
         logger.PaymentCreated(payment.Id, payment.AppointmentId, payment.Amount);
@@ -90,9 +91,11 @@ public sealed class PaymentService(
         }
 
         var previousStatus = payment.Status;
-        payment.UpdateStatus(request.Status.Value, DateTimeOffset.UtcNow);
+        payment.UpdateStatus(request.Status.Value, DateTimeOffset.UtcNow, request.Reason);
+        // Só publica quando o status muda, para um PATCH repetido não gerar outro PaymentApproved/PaymentFailed.
+        if (payment.Status != previousStatus)
+            await eventPublisher.PublishAsync(payment, cancellationToken);
         await repository.UpdateAsync(payment, cancellationToken);
-        await eventPublisher.PublishAsync(payment, cancellationToken);
         metrics.StatusUpdate(
             PaymentMetrics.ResultOk,
             PaymentMetrics.ReasonNone,
@@ -110,5 +113,6 @@ public sealed class PaymentService(
             payment.Status,
             payment.CreatedAt,
             payment.UpdatedAt,
-            payment.ProcessedAt);
+            payment.ProcessedAt,
+            payment.FailureReason);
 }

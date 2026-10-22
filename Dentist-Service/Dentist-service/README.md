@@ -128,7 +128,7 @@ Os eventos são gravados na tabela `outbox_messages` na mesma transação do age
 
 Ordem de subida: Kafka, banco, `dotnet ef database update` e então `dotnet run`. Para rodar sem o Kafka, use `"Kafka": { "Enabled": false }` no `appsettings.Development.json`.
 
-Ainda não há handlers de negócio para pagamentos e planos de saúde. Eles entram junto com o Payment-service e o healthInsurance-service.
+Ainda não há handlers de negócio para pagamentos e planos de saúde. O Payment-service já publica em `payments`, mas por enquanto esses eventos só são registrados no log e confirmados.
 
 ---
 

@@ -21,6 +21,10 @@ public sealed record UpdatePaymentStatusRequest
     /// <summary>Novo status do pagamento.</summary>
     [EnumDataType(typeof(PaymentStatus))]
     public required PaymentStatus? Status { get; init; }
+
+    /// <summary>Motivo da recusa. Usado apenas quando o status é <c>Failed</c> e vai no evento <c>PaymentFailed</c>.</summary>
+    [MaxLength(Payment.FailureReasonMaxLength)]
+    public string? Reason { get; init; }
 }
 
 /// <summary>Representação pública de um pagamento.</summary>
@@ -31,4 +35,5 @@ public sealed record PaymentResponse(
     PaymentStatus Status,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    DateTimeOffset? ProcessedAt);
+    DateTimeOffset? ProcessedAt,
+    string? FailureReason);

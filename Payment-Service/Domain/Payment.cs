@@ -2,6 +2,8 @@ namespace PaymentService.Domain;
 
 public sealed class Payment
 {
+    public const int FailureReasonMaxLength = 500;
+
     public Payment(
         Guid id,
         Guid appointmentId,
@@ -24,12 +26,18 @@ public sealed class Payment
     public DateTimeOffset UpdatedAt { get; private set; }
     public DateTimeOffset? ProcessedAt { get; private set; }
 
-    public void UpdateStatus(PaymentStatus status, DateTimeOffset updatedAt)
+    /// <summary>Motivo da recusa. Só é preenchido enquanto o status for <see cref="PaymentStatus.Failed"/>.</summary>
+    public string? FailureReason { get; private set; }
+
+    public void UpdateStatus(PaymentStatus status, DateTimeOffset updatedAt, string? failureReason = null)
     {
         Status = status;
         UpdatedAt = updatedAt;
         ProcessedAt = status is PaymentStatus.Paid or PaymentStatus.Failed or PaymentStatus.Cancelled
             ? updatedAt
             : ProcessedAt;
+        FailureReason = status == PaymentStatus.Failed && !string.IsNullOrWhiteSpace(failureReason)
+            ? failureReason.Trim()
+            : null;
     }
 }

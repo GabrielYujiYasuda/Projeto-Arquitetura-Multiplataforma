@@ -73,6 +73,67 @@ public class PaymentServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_QuandoRequisicaoValida_DeveEnfileirarEventoAntesDeSalvar()
+    {
+        var calls = new List<string>();
+        _publisher.Setup(p => p.PublishAsync(It.IsAny<Payment>(), It.IsAny<CancellationToken>()))
+            .Callback(() => calls.Add("publish")).Returns(Task.CompletedTask);
+        _repository.Setup(r => r.AddAsync(It.IsAny<Payment>(), It.IsAny<CancellationToken>()))
+            .Callback(() => calls.Add("save")).Returns(Task.CompletedTask);
+
+        await _service.CreateAsync(new CreatePaymentRequest { AppointmentId = Guid.NewGuid(), Amount = 150m });
+
+        calls.Should().Equal("publish", "save");
+    }
+
+    [Fact]
+    public async Task UpdateStatusAsync_QuandoStatusMuda_DeveEnfileirarEventoAntesDeSalvar()
+    {
+        var payment = new Payment(Guid.NewGuid(), Guid.NewGuid(), 100m, DateTimeOffset.UtcNow);
+        _repository.Setup(r => r.GetByIdAsync(payment.Id, It.IsAny<CancellationToken>())).ReturnsAsync(payment);
+        var calls = new List<string>();
+        _publisher.Setup(p => p.PublishAsync(payment, It.IsAny<CancellationToken>()))
+            .Callback(() => calls.Add("publish")).Returns(Task.CompletedTask);
+        _repository.Setup(r => r.UpdateAsync(payment, It.IsAny<CancellationToken>()))
+            .Callback(() => calls.Add("save")).Returns(Task.CompletedTask);
+
+        await _service.UpdateStatusAsync(payment.Id, new UpdatePaymentStatusRequest { Status = PaymentStatus.Paid });
+
+        calls.Should().Equal("publish", "save");
+    }
+
+    [Fact]
+    public async Task UpdateStatusAsync_QuandoStatusNaoMuda_DeveSalvarSemPublicarDeNovo()
+    {
+        var payment = new Payment(Guid.NewGuid(), Guid.NewGuid(), 100m, DateTimeOffset.UtcNow);
+        payment.UpdateStatus(PaymentStatus.Paid, DateTimeOffset.UtcNow);
+        _repository.Setup(r => r.GetByIdAsync(payment.Id, It.IsAny<CancellationToken>())).ReturnsAsync(payment);
+
+        await _service.UpdateStatusAsync(payment.Id, new UpdatePaymentStatusRequest { Status = PaymentStatus.Paid });
+
+        _repository.Verify(r => r.UpdateAsync(payment, It.IsAny<CancellationToken>()), Times.Once);
+        _publisher.Verify(p => p.PublishAsync(It.IsAny<Payment>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateStatusAsync_QuandoFalhaComMotivo_DevePublicarComMotivoERetornarNaResposta()
+    {
+        var payment = new Payment(Guid.NewGuid(), Guid.NewGuid(), 100m, DateTimeOffset.UtcNow);
+        _repository.Setup(r => r.GetByIdAsync(payment.Id, It.IsAny<CancellationToken>())).ReturnsAsync(payment);
+        string? reasonWhenPublished = null;
+        _publisher.Setup(p => p.PublishAsync(payment, It.IsAny<CancellationToken>()))
+            .Callback<Payment, CancellationToken>((p, _) => reasonWhenPublished = p.FailureReason)
+            .Returns(Task.CompletedTask);
+
+        var response = await _service.UpdateStatusAsync(
+            payment.Id,
+            new UpdatePaymentStatusRequest { Status = PaymentStatus.Failed, Reason = "Cartão recusado" });
+
+        reasonWhenPublished.Should().Be("Cartão recusado");
+        response!.FailureReason.Should().Be("Cartão recusado");
+    }
+
+    [Fact]
     public async Task UpdateStatusAsync_QuandoPagamentoNaoExiste_DeveRetornarNuloELogarNotFound()
     {
         var id = Guid.NewGuid();

@@ -15,8 +15,8 @@ info:
     - Datas em UTC, no formato ISO 8601.
     - Mensagens que um consumidor não consegue processar vão para o tópico `<tópico>.dlq`.
 
-    Os canais de pagamento e de plano de saúde já estão definidos, mas os serviços que os
-    produzem (Payment-service e healthInsurance-service) ainda não existem.
+    O canal de plano de saúde já está definido, mas o serviço que o produz
+    (healthInsurance-service) ainda não existe.
 
 servers:
   local:
@@ -43,7 +43,7 @@ channels:
         $ref: '#/components/messages/AppointmentCancelled'
   payments:
     address: payments
-    description: Resultado das cobranças feitas pelo Payment-service (planejado).
+    description: Resultado das cobranças feitas pelo Payment-service.
     messages:
       PaymentApproved:
         $ref: '#/components/messages/PaymentApproved'
@@ -86,7 +86,7 @@ operations:
     action: send
     channel:
       $ref: '#/channels/payments'
-    summary: Payment-service publica o resultado das cobranças (planejado).
+    summary: Payment-service publica via outbox transacional quando o pagamento muda para `Paid` (`PaymentApproved`) ou `Failed` (`PaymentFailed`).
   healthInsuranceServicePublishesAuthorizations:
     action: send
     channel:
@@ -379,6 +379,7 @@ components:
           format: uuid
         reason:
           type: string
+          description: Motivo informado na recusa (até 500 caracteres). Sem motivo, vem "Motivo não informado.".
 
     InsuranceAuthorizedData:
       type: object

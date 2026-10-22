@@ -1,3 +1,4 @@
+using Messaging.Outbox;
 using Microsoft.EntityFrameworkCore;
 using PaymentService.Domain;
 
@@ -6,9 +7,12 @@ namespace PaymentService.Infrastructure.Data;
 public sealed class PaymentDbContext(DbContextOptions<PaymentDbContext> options) : DbContext(options)
 {
     public DbSet<Payment> Payments => Set<Payment>();
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.ApplyOutboxConfiguration();
+
         modelBuilder.Entity<Payment>(entity =>
         {
             entity.ToTable("payments");
@@ -35,6 +39,9 @@ public sealed class PaymentDbContext(DbContextOptions<PaymentDbContext> options)
                 .IsRequired();
             entity.Property(payment => payment.ProcessedAt)
                 .HasColumnName("processed_at");
+            entity.Property(payment => payment.FailureReason)
+                .HasColumnName("failure_reason")
+                .HasMaxLength(Payment.FailureReasonMaxLength);
 
             entity.HasIndex(payment => payment.AppointmentId)
                 .HasDatabaseName("ix_payments_appointment_id");
