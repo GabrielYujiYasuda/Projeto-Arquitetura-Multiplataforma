@@ -172,15 +172,14 @@ curl -X POST "http://localhost:8080/realms/dentist/protocol/openid-connect/token
 
 ## Subindo as aplicações
 
-Suba sempre nesta ordem: **Kafka → banco → migrations → API**.
+Suba sempre nesta ordem: **Kafka → banco → API**. As três APIs aplicam as
+migrations do EF Core automaticamente no boot.
 
 ### Dentist-service (`:5068`)
 
 ```bash
 cd Dentist-Service/Dentist-service
-dotnet tool install --global dotnet-ef   # apenas na primeira vez
-dotnet ef database update                # aplica as migrations
-dotnet run                               # http://localhost:5068
+dotnet run                               # aplica migrations e sobe em http://localhost:5068
 ```
 
 Publica eventos em `appointments` e consome `payments` e `health-insurance`. Para
@@ -190,8 +189,7 @@ subir sem Kafka, use `"Kafka": { "Enabled": false }` no `appsettings.Development
 
 ```bash
 cd Employee-service/Employee-service
-dotnet ef database update
-dotnet run                               # http://localhost:5070
+dotnet run                               # aplica migrations e sobe em http://localhost:5070
 ```
 
 ### PaymentService (`:5127`)
@@ -201,8 +199,8 @@ cd PaymentService
 dotnet run                               # http://localhost:5127
 ```
 
-O `Program.cs` aplica as migrations automaticamente no boot — não precisa de
-`dotnet ef database update`. Os logs vão para `logs/payment-service/`
+O `Program.cs` aplica as migrations automaticamente no boot — assim como o
+Dentist-service e o Employee-service. Os logs vão para `logs/payment-service/`
 (`Observability:LogDirectory` = `../logs` no `appsettings.Development.json`).
 
 ### BFF (`:3000`)
@@ -236,6 +234,116 @@ Lista completa de variáveis e a matriz de RBAC em [`bff/README.md`](bff/README.
 
 ---
 
+## Imagem Docker e CD
+
+O workflow **CD** (`.github/workflows/cd.yml`) roda a cada push em `main`, em tags
+`v*` e por execução manual. Ele compila e publica no **GitHub Container Registry**
+(GHCR) **uma única imagem autocontida**:
+
+```
+ghcr.io/<owner>/<repo>/odontologia
+```
+
+A imagem sobe, no mesmo container e via `supervisor`:
+
+| Processo | Porta | Descrição |
+|---|---|---|
+| Postgres 16 | `5432` | bancos `dentist_service`, `employee_service`, `payment_service` e `keycloak` (acesso apenas interno) |
+| Kafka 4.3 (KRaft) | `9092` | tópicos criados automaticamente no boot |
+| Keycloak 26.6 | `8080` | realm `dentist` importado automaticamente |
+| BFF (NestJS) | `3000` | porta de entrada HTTP (`/health`, `/docs`) |
+| Dentist-service | `5068` | API .NET (migrations no boot) |
+| Employee-service | `5070` | API .NET (migrations no boot) |
+| Payment-service | `5127` | API .NET (migrations no boot) |
+
+Tags geradas: `latest` (branch `main`), `sha-<commit>`, `main` e, para tags
+semver (`v1.2.3`), `1.2.3` e `1.2`. Os processos rodam como usuário não-root `app`.
+
+Build local (na raiz do repositório):
+
+```bash
+docker build -t odontologia .
+```
+
+Executando sem nenhuma configuração extra:
+
+```bash
+docker run --rm \
+  -p 3000:3000 -p 5068:5068 -p 5070:5070 -p 5127:5127 \
+  -p 8080:8080 -p 9092:9092 \
+  -v odonto-pg:/app/pgdata \
+  -v odonto-kafka:/app/kafka-data \
+  odontologia
+```
+
+Os volumes preservam Postgres e Kafka entre execuções; o estado do Keycloak fica
+no Postgres. Sem os volumes, a imagem inicia com os bancos e tópicos vazios.
+
+Credenciais padrão (apenas para desenvolvimento):
+
+- Keycloak admin: `admin` / `admin` — console em `http://localhost:8080/admin`
+- Usuários de teste do realm `dentist`: `dentista1`, `funcionario1` e
+  `paciente1`, senha `123456`
+- Postgres: usuário `postgres`, senha `postgres` (sem porta publicada; use
+  `docker exec -u app <container> psql -U postgres`)
+
+Teste de ponta a ponta:
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8080/realms/dentist/protocol/openid-connect/token \
+  -d 'grant_type=password' -d 'client_id=dentist-app' \
+  -d 'username=dentista1' -d 'password=123456' | jq -r .access_token)
+
+curl -H "Authorization: Bearer $TOKEN" http://localhost:3000/api/dentist-services
+```
+
+> Use `localhost` (e não `127.0.0.1`) ao obter o token: o emissor padrão é
+> `http://localhost:8080/realms/dentist`. Se mudar porta/host, ajuste
+> `KEYCLOAK_ISSUER` e `KEYCLOAK_JWKS_URI`.
+
+Acompanhe os processos e os logs:
+
+```bash
+docker exec -u app <container> supervisorctl -c /app/supervisord.conf status
+docker logs -f <container>   # stdout/stderr de todos os processos
+```
+
+Principais variáveis:
+
+| Variável | Padrão na imagem | Usada por |
+|---|---|---|
+| `KEYCLOAK_ISSUER` | `http://localhost:8080/realms/dentist` | BFF |
+| `KEYCLOAK_JWKS_URI` | `http://127.0.0.1:8080/realms/dentist/protocol/openid-connect/certs` | BFF |
+| `KEYCLOAK_CLIENT_ID` | `dentist-app` | BFF |
+| `KC_BOOTSTRAP_ADMIN_USERNAME` / `KC_BOOTSTRAP_ADMIN_PASSWORD` | `admin` / `admin` | Keycloak |
+| `DENTIST_CONNECTION_STRING` | `Host=127.0.0.1;Port=5432;Database=dentist_service;...` | Dentist-service |
+| `EMPLOYEE_CONNECTION_STRING` | `Host=127.0.0.1;Port=5432;Database=employee_service;...` | Employee-service |
+| `PAYMENT_CONNECTION_STRING` | `Host=127.0.0.1;Port=5432;Database=payment_service;...` | Payment-service |
+| `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092` | Dentist e Payment |
+| `KAFKA_ENABLED` | `true` | Dentist e Payment |
+| `DENTIST_SERVICE_BASE_URL` | `http://127.0.0.1:5068` | BFF |
+| `EMPLOYEE_SERVICE_BASE_URL` | `http://127.0.0.1:5070` | BFF |
+| `SWAGGER_ENABLED` | `true` | BFF |
+| `CORS_ORIGINS` | vazio | BFF |
+
+As connection strings podem ser sobrescritas para apontar para Postgres externo,
+e `KAFKA_BOOTSTRAP_SERVERS` para um Kafka externo. Nesse caso, os serviços
+embarcados continuam rodando, mas as aplicações usam o destino informado.
+
+> A infraestrutura embarcada é pensada para desenvolvimento/demonstração e para
+> entregar tudo em um único artefato. Para produção, o recomendado é usar
+> Postgres, Kafka e Keycloak gerenciados/separados. Reserve pelo menos ~2 GB de
+> RAM para o container completo.
+
+> O CD só publica a imagem; ele não faz deploy em nenhum ambiente. Para
+> consumir o pacote, ele precisa estar acessível (público ou autenticado com
+> `docker login ghcr.io`).
+
+> O target `bff` ainda existe no Dockerfile para desenvolvimento isolado do BFF:
+> `docker build --target bff -t bff .`.
+
+---
+
 ## Resumo: subir o sistema inteiro
 
 ```bash
@@ -247,11 +355,7 @@ docker compose -f Dentist-Service/Dentist-service/docker-compose.yml up -d
 docker compose -f Employee-service/Employee-service/docker-compose.yml up -d
 docker compose -f PaymentService/docker-compose.yml up -d
 
-# Migrations das APIs que não auto-migram
-(cd Dentist-Service/Dentist-service && dotnet ef database update)
-(cd Employee-service/Employee-service && dotnet ef database update)
-
-# Aplicações (uma por terminal)
+# Aplicações (uma por terminal; as migrations são aplicadas no boot)
 (cd Dentist-Service/Dentist-service && dotnet run)   # :5068
 (cd Employee-service/Employee-service && dotnet run)  # :5070
 (cd PaymentService && dotnet run)                     # :5127
@@ -348,10 +452,10 @@ docker compose -f PaymentService/docker-compose.yml down -v
   `port is already allocated`, ajuste a porta publicada no compose correspondente.
 - **Realm do Keycloak desatualizado.** O realm só é importado na primeira subida.
   Alterou o JSON? `docker compose -f keycloak/docker-compose.yaml down -v && up -d`.
-- **`dotnet ef` não encontrado.** `dotnet tool install --global dotnet-ef` e garanta
-  que `~/.dotnet/tools` está no `PATH`.
-- **Dentist-service com erro 500 ao criar agendamento.** Falta aplicar as migrations
-  (a tabela `outbox_messages` precisa existir): `dotnet ef database update`.
+- **`dotnet ef` não encontrado.** Necessário apenas para criar novas migrations:
+  `dotnet tool install --global dotnet-ef` e garanta que `~/.dotnet/tools` está no `PATH`.
+- **Dentist-service com erro 500 ao criar agendamento.** Confirme que o Postgres
+  estava acessível no boot; as migrations são aplicadas automaticamente.
 - **BFF não sobe.** O boot valida o `.env` e falha listando as variáveis inválidas.
   Confira `KEYCLOAK_ISSUER`, `KEYCLOAK_JWKS_URI`, `KEYCLOAK_CLIENT_ID` e
   `DENTIST_SERVICE_BASE_URL`.
