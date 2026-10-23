@@ -77,15 +77,15 @@ O arquivo `appsettings.json` já está configurado para o banco acima:
 
 ## Migrations
 
-A migration inicial já está na pasta `Migrations/`. Para aplicá-la ao banco:
+As migrations são aplicadas automaticamente no boot da API (`Database.MigrateAsync()`).
+Para criar uma nova migration:
 
 ```bash
 # Instalar/atualizar a ferramenta dotnet-ef (caso ainda não tenha)
 dotnet tool install --global dotnet-ef
 dotnet tool update --global dotnet-ef
 
-# Aplicar ao banco
-dotnet ef database update
+dotnet ef migrations add NomeDaMigration
 ```
 
 > Na primeira execução em um banco vazio, o EF registra um `fail` ao consultar `__EFMigrationsHistory` antes de criar essa tabela. É esperado: a migration é aplicada normalmente em seguida.

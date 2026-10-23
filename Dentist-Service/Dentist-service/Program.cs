@@ -79,6 +79,13 @@ builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
+// Aplica as migrations no boot (garante o schema em um banco novo).
+await using (var scope = app.Services.CreateAsyncScope())
+{
+    var dbContext = scope.ServiceProvider.GetRequiredService<DentistServicesDbContext>();
+    await dbContext.Database.MigrateAsync();
+}
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();

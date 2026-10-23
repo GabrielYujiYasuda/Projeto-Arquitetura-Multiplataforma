@@ -13,13 +13,17 @@ pnpm install
 pnpm run start:dev     # http://localhost:3000 | Swagger em /docs (se SWAGGER_ENABLED=true)
 ```
 
-Via Docker:
+Via Docker (na raiz do repositório):
 
 ```bash
-docker build -t bff .
-docker run -p 3000:3000 --env-file .env bff
+# imagem completa: BFF + APIs + Postgres + Kafka + Keycloak
+docker build -t odontologia .
+
+# somente o BFF, para desenvolvimento isolado
+docker build --target bff -t bff .
+docker run -p 3000:3000 --env-file bff/.env bff
 # ou com mock do downstream:
-docker compose -f docker-compose.dev.yml up
+cd bff && docker compose -f docker-compose.dev.yml up
 ```
 
 `GET /health` é público (liveness).

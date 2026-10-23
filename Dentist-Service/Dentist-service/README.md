@@ -75,17 +75,14 @@ mensageria (`outbox.*`, `consumer.*`) trazem `labels.correlation_id`. Ver
 
 ## Migrations
 
-Aplique as migrations para criar as tabelas:
+As migrations são aplicadas automaticamente no boot da API (`Database.MigrateAsync()`).
+Para criar uma nova migration:
 
 ```bash
 # Instalar a ferramenta dotnet-ef (caso ainda não tenha)
 dotnet tool install --global dotnet-ef
 
-# Criar a migration inicial
-dotnet ef migrations add InitialCreate
-
-# Aplicar ao banco
-dotnet ef database update
+dotnet ef migrations add NomeDaMigration
 ```
 
 A migration `20261013120000_AddAppointments` adiciona duração aos serviços, expediente semanal, exceções e pedidos de consulta.
